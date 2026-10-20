@@ -7,6 +7,7 @@ import { Plus, Trash2 } from 'lucide-react'
 
 interface Props {
   initial: McpTool | null
+  existingTools?: McpTool[]
   onSave: (tool: McpTool) => void
   onCancel: () => void
 }
@@ -23,7 +24,7 @@ const EMPTY_TOOL: McpTool = {
   },
 }
 
-export default function ToolForm({ initial, onSave, onCancel }: Props) {
+export default function ToolForm({ initial, existingTools = [], onSave, onCancel }: Props) {
   const [tool, setTool] = useState<McpTool>(
     initial ?? { ...EMPTY_TOOL, id: generateId() }
   )
@@ -59,8 +60,10 @@ export default function ToolForm({ initial, onSave, onCancel }: Props) {
   function validate(): boolean {
     const errs: Record<string, string> = {}
     if (!tool.name.trim()) errs.name = 'Tool name is required'
-    if (!/^[a-z][a-z0-9_]*$/.test(tool.name))
+    else if (!/^[a-z][a-z0-9_]*$/.test(tool.name))
       errs.name = 'Must be lowercase letters, numbers, underscores — start with a letter'
+    else if (existingTools.some((t) => t.name === tool.name && t.id !== tool.id))
+      errs.name = 'A tool with this name already exists'
     if (!tool.description.trim()) errs.description = 'Description is required'
     if (!tool.connector.url.trim()) errs.url = 'API URL is required'
     tool.inputs.forEach((inp, i) => {
@@ -136,6 +139,11 @@ export default function ToolForm({ initial, onSave, onCancel }: Props) {
               placeholder="https://api.example.com/weather/{city}"
             />
             {errors.url && <p className={errText}>{errors.url}</p>}
+            {tool.connector.url && /\{[^}]+\}/.test(tool.connector.url) && (
+              <p className="text-[10px] text-white/25 mt-1">
+                Placeholders detected: {[...tool.connector.url.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]).join(', ')} — add matching input names below
+              </p>
+            )}
           </div>
         </div>
 

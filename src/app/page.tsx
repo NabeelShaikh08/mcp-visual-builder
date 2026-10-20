@@ -1,101 +1,120 @@
 import Link from 'next/link'
-import { Zap, Code2, TestTube2, Rocket } from 'lucide-react'
+import { ArrowRight, Layers, Zap, Terminal, Globe } from 'lucide-react'
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 text-white">
+    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
       {/* Nav */}
-      <nav className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Zap className="w-5 h-5 text-blue-400" />
-          <span className="font-semibold text-lg">MCP Visual Builder</span>
+      <nav className="border-b border-white/[0.06] px-8 h-14 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 bg-white rounded-sm flex items-center justify-center">
+            <Zap className="w-3.5 h-3.5 text-black" fill="black" />
+          </div>
+          <span className="text-sm font-semibold tracking-tight">MCP Builder</span>
         </div>
-        <a
-          href="https://github.com/NabeelShaikh08"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-white/60 hover:text-white transition-colors"
-        >
-          GitHub
-        </a>
+        <div className="flex items-center gap-6">
+          <a
+            href="https://modelcontextprotocol.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-white/40 hover:text-white/70 transition-colors"
+          >
+            Docs
+          </a>
+          <a
+            href="https://github.com/NabeelShaikh08"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-white/40 hover:text-white/70 transition-colors"
+          >
+            GitHub
+          </a>
+          <Link
+            href="/builder"
+            className="text-xs bg-white text-black font-medium px-3 py-1.5 rounded-md hover:bg-white/90 transition-colors"
+          >
+            Open Builder
+          </Link>
+        </div>
       </nav>
 
       {/* Hero */}
-      <section className="max-w-4xl mx-auto px-6 pt-24 pb-16 text-center">
-        <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-1.5 text-sm text-blue-400 mb-8">
-          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full" />
+      <section className="max-w-3xl mx-auto px-8 pt-28 pb-20">
+        <div className="inline-flex items-center gap-2 border border-white/10 rounded-full px-3 py-1 text-xs text-white/40 mb-10">
+          <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
           Model Context Protocol
         </div>
 
-        <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-          Build MCP Servers
-          <span className="block text-blue-400">Without Writing Code</span>
+        <h1 className="text-[3.25rem] font-bold leading-[1.1] tracking-tight mb-6">
+          Build MCP servers
+          <br />
+          <span className="text-white/30">without writing code.</span>
         </h1>
 
-        <p className="text-xl text-white/60 max-w-2xl mx-auto mb-12 leading-relaxed">
-          Define your tools visually, connect to any REST API, test live with Claude,
-          and download a ready-to-deploy MCP server in seconds.
+        <p className="text-base text-white/40 max-w-xl leading-relaxed mb-10">
+          Define tools visually, connect to any REST API, and export a
+          ready-to-run MCP server for Claude Desktop — in under two minutes.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex items-center gap-3">
           <Link
             href="/builder"
-            className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-lg transition-colors text-lg"
+            className="inline-flex items-center gap-2 bg-white text-black text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-white/90 transition-colors"
           >
-            <Zap className="w-5 h-5" />
-            Start Building
+            Start building
+            <ArrowRight className="w-4 h-4" />
           </Link>
           <a
             href="https://modelcontextprotocol.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold px-8 py-4 rounded-lg transition-colors text-lg"
+            className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white/70 transition-colors px-5 py-2.5"
           >
             What is MCP?
           </a>
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="max-w-5xl mx-auto px-6 py-16">
-        <h2 className="text-2xl font-bold text-center mb-12 text-white/80">How It Works</h2>
-        <div className="grid md:grid-cols-3 gap-6">
+      {/* Steps */}
+      <section className="max-w-3xl mx-auto px-8 pb-24">
+        <div className="grid grid-cols-3 gap-px bg-white/[0.06] rounded-xl overflow-hidden border border-white/[0.06]">
           {[
             {
-              icon: <Code2 className="w-6 h-6 text-blue-400" />,
-              step: '01',
-              title: 'Define Your Tools',
-              desc: 'Name your tool, describe what it does, add input parameters, and connect it to any REST API endpoint.',
+              icon: <Layers className="w-4 h-4" />,
+              num: '01',
+              title: 'Define tools',
+              desc: 'Name your tool, add inputs, connect it to any REST API endpoint.',
             },
             {
-              icon: <TestTube2 className="w-6 h-6 text-green-400" />,
-              step: '02',
-              title: 'Test Live',
-              desc: 'Chat with Claude right in the browser. It calls your tools in real time — see exactly what gets sent and returned.',
+              icon: <Globe className="w-4 h-4" />,
+              num: '02',
+              title: 'Test live',
+              desc: 'Chat in the browser. The AI simulates calling your tools in real time.',
             },
             {
-              icon: <Rocket className="w-6 h-6 text-purple-400" />,
-              step: '03',
-              title: 'Deploy',
-              desc: 'Download a ready-to-run server.js and the config snippet to paste into Claude Desktop. Done in seconds.',
+              icon: <Terminal className="w-4 h-4" />,
+              num: '03',
+              title: 'Export & run',
+              desc: 'Download server.js and the config snippet. Paste into Claude Desktop.',
             },
           ].map((item) => (
-            <div key={item.step} className="bg-white/5 border border-white/10 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-4">
-                {item.icon}
-                <span className="text-xs font-mono text-white/30">STEP {item.step}</span>
+            <div key={item.num} className="bg-[#0a0a0a] px-6 py-7">
+              <div className="flex items-center justify-between mb-5">
+                <div className="text-white/30">{item.icon}</div>
+                <span className="text-xs font-mono text-white/15">{item.num}</span>
               </div>
-              <h3 className="font-semibold text-lg mb-2">{item.title}</h3>
-              <p className="text-white/50 text-sm leading-relaxed">{item.desc}</p>
+              <h3 className="text-sm font-semibold mb-2">{item.title}</h3>
+              <p className="text-xs text-white/35 leading-relaxed">{item.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 px-6 py-8 text-center text-white/30 text-sm">
-        Built by Nabeel Shaikh · MCP Visual Builder v0.1.0
+      <footer className="border-t border-white/[0.06] px-8 py-5 flex items-center justify-between">
+        <span className="text-xs text-white/20">MCP Visual Builder</span>
+        <span className="text-xs text-white/20">by Nabeel Shaikh</span>
       </footer>
-    </main>
+    </div>
   )
 }

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import type { McpServer } from '@/types'
-import { Send, Bot, User, AlertCircle } from 'lucide-react'
+import { Send, Bot, User, AlertCircle, Zap } from 'lucide-react'
 
 interface Message {
   id: string
@@ -12,13 +12,15 @@ interface Message {
 
 interface Props {
   server: McpServer
+  credentials?: Record<string, string>
 }
 
-export default function TestChat({ server }: Props) {
+export default function TestChat({ server, credentials = {} }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isSimulation, setIsSimulation] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export default function TestChat({ server }: Props) {
             content: m.content,
           })),
           server,
+          credentials,
         }),
       })
 
@@ -61,12 +64,23 @@ export default function TestChat({ server }: Props) {
       }
 
       const data = await res.json()
-      const assistantMsg: Message = {
+
+      if (data.isSimulation) {
+        setIsSimulation(true)
+        setMessages((m) => [...m, {
+          id: Math.random().toString(36).slice(2),
+          role: 'assistant',
+          content: data.content ?? 'Add ANTHROPIC_API_KEY to .env.local for real tool calls. Currently in simulation mode.',
+        }])
+        return
+      }
+
+      setIsSimulation(false)
+      setMessages((m) => [...m, {
         id: Math.random().toString(36).slice(2),
         role: 'assistant',
         content: data.content,
-      }
-      setMessages((m) => [...m, assistantMsg])
+      }])
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
@@ -78,20 +92,27 @@ export default function TestChat({ server }: Props) {
   return (
     <div className="flex flex-col h-[calc(100vh-57px)]">
       {/* Header */}
-      <div className="border-b border-white/10 px-6 py-3 flex items-center justify-between">
+      <div className="border-b border-[#1a1a1a] px-6 py-3 flex items-center justify-between">
         <div>
-          <h2 className="font-medium text-sm">Live Test Chat</h2>
+          <h2 className="font-medium text-sm">AI Chat</h2>
           <p className="text-white/40 text-xs">
             {noTools
               ? 'Add tools in the Build tab first'
               : `Testing with ${server.tools.length} tool${server.tools.length !== 1 ? 's' : ''} — ${server.tools.map((t) => t.name).join(', ')}`}
           </p>
         </div>
-        {!noTools && (
-          <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-1 rounded-full">
-            Ready
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isSimulation && (
+            <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-1 rounded-full">
+              Simulation mode
+            </span>
+          )}
+          {!noTools && !isSimulation && (
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded-full">
+              Ready
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -120,16 +141,16 @@ export default function TestChat({ server }: Props) {
             className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
           >
             <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-              msg.role === 'user' ? 'bg-blue-600' : 'bg-white/10'
+              msg.role === 'user' ? 'bg-[#1a1a1a] border border-[#2a2a2a]' : 'bg-[#1a1a1a] border border-[#2a2a2a]'
             }`}>
               {msg.role === 'user'
-                ? <User className="w-4 h-4" />
-                : <Bot className="w-4 h-4 text-blue-400" />}
+                ? <User className="w-3.5 h-3.5 text-white/60" />
+                : <Zap className="w-3.5 h-3.5 text-blue-400" />}
             </div>
             <div className={`max-w-2xl px-4 py-3 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
               msg.role === 'user'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white/5 border border-white/10 text-white/80'
+                ? 'bg-[#1a1a1a] border border-[#2a2a2a] text-white/80'
+                : 'bg-[#0d0d0d] border border-[#1a1a1a] text-white/70'
             }`}>
               {msg.content}
             </div>
@@ -138,15 +159,15 @@ export default function TestChat({ server }: Props) {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-              <Bot className="w-4 h-4 text-blue-400" />
+            <div className="w-7 h-7 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
+              <Zap className="w-3.5 h-3.5 text-blue-400" />
             </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+            <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl px-4 py-3">
               <div className="flex gap-1">
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce"
+                    className="w-1.5 h-1.5 bg-white/20 rounded-full animate-bounce"
                     style={{ animationDelay: `${i * 150}ms` }}
                   />
                 ))}
@@ -156,7 +177,7 @@ export default function TestChat({ server }: Props) {
         )}
 
         {error && (
-          <div className="flex items-start gap-2 text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm">
+          <div className="flex items-start gap-2 text-red-400 bg-red-500/[0.06] border border-red-500/15 rounded-xl px-4 py-3 text-sm">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -166,7 +187,7 @@ export default function TestChat({ server }: Props) {
       </div>
 
       {/* Input */}
-      <div className="border-t border-white/10 px-6 py-4">
+      <div className="border-t border-[#1a1a1a] px-6 py-4">
         <form
           onSubmit={(e) => { e.preventDefault(); sendMessage() }}
           className="flex gap-3"
@@ -176,12 +197,12 @@ export default function TestChat({ server }: Props) {
             onChange={(e) => setInput(e.target.value)}
             disabled={loading || noTools}
             placeholder={noTools ? 'Add tools first...' : 'Ask Claude to use your tools...'}
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-40"
+            className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] hover:border-[#3a3a3a] focus:border-[#444] rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors disabled:opacity-40 text-white/80 placeholder:text-white/25"
           />
           <button
             type="submit"
             disabled={loading || !input.trim() || noTools}
-            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white p-3 rounded-xl transition-colors flex-shrink-0"
+            className="bg-white text-black disabled:opacity-30 p-3 rounded-xl transition-colors flex-shrink-0 hover:bg-white/90"
           >
             <Send className="w-4 h-4" />
           </button>

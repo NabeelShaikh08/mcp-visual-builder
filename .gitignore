@@ -23,3 +23,10 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Claude Code local files
+.claude/
+
+# TypeScript build info (auto-generated)
+tsconfig.tsbuildinfo
+next-env.d.ts
