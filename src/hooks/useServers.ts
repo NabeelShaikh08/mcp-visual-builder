@@ -37,11 +37,12 @@ export function useServers(user: User | null) {
 
   async function syncServer(server: McpServer) {
     try {
-      await fetch('/api/servers', {
+      const res = await fetch('/api/servers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(server),
       })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setSyncError(null)
     } catch {
       setSyncError('Sync failed — saved locally')
@@ -50,8 +51,11 @@ export function useServers(user: User | null) {
 
   async function deleteServerFromCloud(id: string) {
     try {
-      await fetch(`/api/servers/${id}`, { method: 'DELETE' })
-    } catch { /* ignore */ }
+      const res = await fetch(`/api/servers/${id}`, { method: 'DELETE' })
+      if (!res.ok) setSyncError('Delete sync failed — server may reappear on reload')
+    } catch {
+      setSyncError('Delete sync failed — server may reappear on reload')
+    }
   }
 
   // Load servers on mount / user change
@@ -60,16 +64,15 @@ export function useServers(user: User | null) {
       setSyncing(true)
       fetch('/api/servers')
         .then((r) => r.json())
-        .then((data: { servers: McpServer[] }) => {
+        .then((data: { servers?: McpServer[] }) => {
           if (data.servers && data.servers.length > 0) {
             setServers(data.servers)
             saveLocal(data.servers)
+            setSyncError(null)
           } else {
-            // No cloud servers — check localStorage
             const local = loadLocal()
             if (local.length > 0) {
               setServers(local)
-              // Upload local servers to cloud
               Promise.all(local.map((s) => syncServer(s))).catch(() => {})
             } else {
               const fresh = makeEmptyServer()
@@ -78,16 +81,15 @@ export function useServers(user: User | null) {
           }
         })
         .catch(() => {
-          // Cloud unavailable — use localStorage
           const local = loadLocal()
           setServers(local.length > 0 ? local : [makeEmptyServer()])
           setSyncError('Offline — changes saved locally')
         })
         .finally(() => setSyncing(false))
     } else {
-      // Not logged in — use localStorage only
       const local = loadLocal()
       setServers(local.length > 0 ? local : [makeEmptyServer()])
+      setSyncError(null)
     }
   }, [user?.id])
 
@@ -96,10 +98,9 @@ export function useServers(user: User | null) {
     saveLocal(updated)
 
     if (user) {
-      // Debounce cloud sync by 1s to avoid hammering on every keystroke
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
-        updated.forEach((s) => syncServer(s))
+        Promise.all(updated.map((s) => syncServer(s))).catch(() => {})
       }, 1000)
     }
   }

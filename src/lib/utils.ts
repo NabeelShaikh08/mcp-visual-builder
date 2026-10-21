@@ -15,7 +15,7 @@ export function toSnakeCase(str: string): string {
     .replace(/^_|_$/g, '')
 }
 
-// Generate a short unique id
+// Generate a cryptographically secure unique id
 export function generateId(): string {
-  return Math.random().toString(36).slice(2, 9)
+  return crypto.randomUUID()
 }

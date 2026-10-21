@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import type { McpServer } from '@/types'
-import { Send, Bot, User, AlertCircle, Zap } from 'lucide-react'
+import { Send, Bot, User, AlertCircle, Zap, Trash2 } from 'lucide-react'
 
 interface Message {
   id: string
@@ -34,7 +34,7 @@ export default function TestChat({ server, credentials = {} }: Props) {
     if (!text || loading) return
 
     const userMsg: Message = {
-      id: Math.random().toString(36).slice(2),
+      id: crypto.randomUUID(),
       role: 'user',
       content: text,
     }
@@ -68,7 +68,7 @@ export default function TestChat({ server, credentials = {} }: Props) {
       if (data.isSimulation) {
         setIsSimulation(true)
         setMessages((m) => [...m, {
-          id: Math.random().toString(36).slice(2),
+          id: crypto.randomUUID(),
           role: 'assistant',
           content: data.content ?? 'Add ANTHROPIC_API_KEY to .env.local for real tool calls. Currently in simulation mode.',
         }])
@@ -77,7 +77,7 @@ export default function TestChat({ server, credentials = {} }: Props) {
 
       setIsSimulation(false)
       setMessages((m) => [...m, {
-        id: Math.random().toString(36).slice(2),
+        id: crypto.randomUUID(),
         role: 'assistant',
         content: data.content,
       }])
@@ -111,6 +111,15 @@ export default function TestChat({ server, credentials = {} }: Props) {
             <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded-full">
               Ready
             </span>
+          )}
+          {messages.length > 0 && (
+            <button
+              onClick={() => { setMessages([]); setError(null); setIsSimulation(false) }}
+              title="Clear chat"
+              className="p-1.5 text-white/20 hover:text-white/50 hover:bg-white/[0.04] rounded transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
       </div>

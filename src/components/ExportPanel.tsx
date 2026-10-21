@@ -99,6 +99,16 @@ export default function ExportPanel({ server, credentials = {} }: Props) {
         </div>
       )}
 
+      {!noTools && (
+        <div className="flex items-start gap-3 bg-blue-500/[0.05] border border-blue-500/15 rounded-xl px-4 py-3.5 text-blue-400/70 text-xs mb-6">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>
+            The exported files may contain API endpoints and configuration values (e.g. your Shopify domain).
+            {' '}<strong className="text-blue-400/90">Do not commit them to a public repository</strong> or share them publicly.
+          </span>
+        </div>
+      )}
+
       {/* File tabs */}
       <div className="flex items-center gap-0.5 bg-[#111] border border-[#222] rounded-lg p-0.5 mb-3 flex-wrap">
         {TAB_GROUPS.map(({ id, label }) => (

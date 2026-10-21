@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { McpTool } from '@/types'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 // Coerce string form values to proper types based on the tool's input definitions
 function coerceArgs(
@@ -31,15 +32,54 @@ function coerceArgs(
   return result
 }
 
-// Build the final URL by replacing {placeholder} segments with actual arg values
+// Build the final URL by replacing {placeholder} segments with actual arg values.
+// Values that appear inside query strings are percent-encoded to prevent injection.
 function buildUrl(template: string, args: Record<string, unknown>): string {
-  return template.replace(/\{([^}]+)\}/g, (_, key: string) => {
+  // Split into path and query so we can encode query values correctly
+  const qIdx = template.indexOf('?')
+  if (qIdx === -1) {
+    // No query string — just substitute path placeholders (no encoding needed)
+    return template.replace(/\{([^}]+)\}/g, (match, key: string) => {
+      const v = args[key]
+      return v !== undefined ? encodeURIComponent(String(v)) : match
+    })
+  }
+
+  const pathPart = template.slice(0, qIdx)
+  const queryPart = template.slice(qIdx + 1)
+
+  // Substitute path placeholders (encode for safe URL paths)
+  const resolvedPath = pathPart.replace(/\{([^}]+)\}/g, (match, key: string) => {
     const v = args[key]
-    return v !== undefined ? String(v) : `{${key}}`
+    return v !== undefined ? encodeURIComponent(String(v)) : match
   })
+
+  // Parse query params and substitute + encode values; drop params with unresolved placeholders
+  const resolvedQuery = queryPart
+    .split('&')
+    .map((pair) => {
+      const eqIdx = pair.indexOf('=')
+      if (eqIdx === -1) return pair
+      const paramName = pair.slice(0, eqIdx)
+      const paramValue = pair.slice(eqIdx + 1)
+      // If the value is a single placeholder, substitute it
+      const placeholderMatch = paramValue.match(/^\{([^}]+)\}$/)
+      if (placeholderMatch) {
+        const key = placeholderMatch[1]
+        const v = args[key]
+        // Drop the param entirely if the value is missing (optional params)
+        if (v === undefined || v === null || v === '') return null
+        return `${paramName}=${encodeURIComponent(String(v))}`
+      }
+      return pair
+    })
+    .filter((p): p is string => p !== null)
+    .join('&')
+
+  return resolvedQuery ? `${resolvedPath}?${resolvedQuery}` : resolvedPath
 }
 
-// Validate URL — catch malformed URLs and path traversal attempts
+// Validate URL — catch malformed URLs, path traversal, and SSRF targets
 function validateUrl(
   resolvedUrl: string,
 ): { valid: true; url: URL } | { valid: false; error: string } {
@@ -61,11 +101,47 @@ function validateUrl(
     return { valid: false, error: 'Invalid URL: path traversal detected' }
   }
 
+  // Block SSRF — deny requests to internal/private network addresses
+  const host = parsed.hostname.toLowerCase()
+  if (isPrivateHost(host)) {
+    return { valid: false, error: 'Invalid URL: requests to internal addresses are not allowed' }
+  }
+
   return { valid: true, url: parsed }
+}
+
+// Returns true if the hostname resolves to a private/internal address
+function isPrivateHost(host: string): boolean {
+  // Loopback
+  if (host === 'localhost' || host === '::1') return true
+  if (/^127\.\d+\.\d+\.\d+$/.test(host)) return true
+
+  // Link-local (AWS/GCP metadata endpoint 169.254.169.254 lives here)
+  if (/^169\.254\.\d+\.\d+$/.test(host)) return true
+
+  // Private class A: 10.0.0.0/8
+  if (/^10\.\d+\.\d+\.\d+$/.test(host)) return true
+
+  // Private class B: 172.16.0.0/12 (172.16.x.x – 172.31.x.x)
+  const classB = host.match(/^172\.(\d+)\.\d+\.\d+$/)
+  if (classB && parseInt(classB[1]) >= 16 && parseInt(classB[1]) <= 31) return true
+
+  // Private class C: 192.168.0.0/16
+  if (/^192\.168\.\d+\.\d+$/.test(host)) return true
+
+  // IPv6 private ranges (simplified check for common cases)
+  if (host.startsWith('fc') || host.startsWith('fd')) return true
+  if (host === '[::1]') return true
+
+  return false
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+
     const body = await req.json() as {
       tool: McpTool
       args: Record<string, string>
@@ -97,17 +173,27 @@ export async function POST(req: NextRequest) {
     // Build headers
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'User-Agent': 'MCPBuilder/1.0',
     }
 
     if (tool.connector.authType === 'bearer') {
       const token = credentials['token'] ?? credentials['api_token'] ?? ''
-      headers['Authorization'] = `Bearer ${token}`
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      // Notion requires this header on every request
+      if (tool.connector.url.includes('api.notion.com')) {
+        headers['Notion-Version'] = '2022-06-28'
+      }
+      // GitHub recommends this header for all API requests
+      if (tool.connector.url.includes('api.github.com')) {
+        headers['Accept'] = 'application/vnd.github+json'
+        headers['X-GitHub-Api-Version'] = '2022-11-28'
+      }
     } else if (tool.connector.authType === 'api-key' && tool.connector.authHeader) {
       const key = credentials['token'] ?? credentials['api_key'] ?? credentials['key'] ?? ''
       headers[tool.connector.authHeader] = key
     } else if (tool.connector.authType === 'basic') {
-      const user = credentials['api_user'] ?? ''
-      const pass = credentials['api_pass'] ?? ''
+      const user = credentials['api_user'] ?? credentials['consumer_key'] ?? ''
+      const pass = credentials['api_pass'] ?? credentials['consumer_secret'] ?? ''
       headers['Authorization'] = `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`
     }
 
@@ -163,10 +249,16 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const data = await res.json().catch(() => null)
+    const text = await res.text().catch(() => '')
+    let output: string
+    try {
+      output = JSON.stringify(JSON.parse(text), null, 2)
+    } catch {
+      output = text || '(empty response)'
+    }
     return NextResponse.json({
       success: true,
-      output: JSON.stringify(data, null, 2),
+      output,
       status: res.status,
       durationMs,
     })

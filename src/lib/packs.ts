@@ -3,7 +3,7 @@ import { generateId } from './utils'
 import type { McpTool } from '@/types'
 
 // Shopify Admin API version — bump this to upgrade all tools at once
-const SHOPIFY_API_VERSION = '2024-01'
+const SHOPIFY_API_VERSION = '2025-01'
 
 export const TOOL_PACKS: ToolPack[] = [
   // ── Shopify ────────────────────────────────────────────────────────────────
@@ -448,9 +448,10 @@ export const TOOL_PACKS: ToolPack[] = [
         description: 'List all databases accessible to the integration',
         inputs: [],
         connector: {
-          method: 'GET',
-          url: 'https://api.notion.com/v1/databases',
+          method: 'POST',
+          url: 'https://api.notion.com/v1/search',
           authType: 'bearer',
+          bodyTemplate: '{"filter":{"value":"database","property":"object"}}',
         },
       },
       {
@@ -605,33 +606,35 @@ export const TOOL_PACKS: ToolPack[] = [
       },
       {
         name: 'airtable_create_record',
-        description: 'Create a new record in an Airtable table',
+        description: 'Create a new record in an Airtable table. Pass field_name and field_value for a single field.',
         inputs: [
-          { id: generateId(), name: 'base_id', type: 'string', description: 'Base ID', required: true },
+          { id: generateId(), name: 'base_id', type: 'string', description: 'Base ID (appXXXXXX)', required: true },
           { id: generateId(), name: 'table_name', type: 'string', description: 'Table name or ID', required: true },
-          { id: generateId(), name: 'fields_json', type: 'string', description: 'JSON object of field values', required: true },
+          { id: generateId(), name: 'field_name', type: 'string', description: 'Field name to set (e.g. Name)', required: true },
+          { id: generateId(), name: 'field_value', type: 'string', description: 'Value for that field', required: true },
         ],
         connector: {
           method: 'POST',
           url: 'https://api.airtable.com/v0/{base_id}/{table_name}',
           authType: 'bearer',
-          bodyTemplate: '{"fields":{fields_json}}',
+          bodyTemplate: '{"fields":{"{field_name}":"{field_value}"}}',
         },
       },
       {
         name: 'airtable_update_record',
-        description: 'Update an existing Airtable record',
+        description: 'Update a single field on an existing Airtable record.',
         inputs: [
-          { id: generateId(), name: 'base_id', type: 'string', description: 'Base ID', required: true },
+          { id: generateId(), name: 'base_id', type: 'string', description: 'Base ID (appXXXXXX)', required: true },
           { id: generateId(), name: 'table_name', type: 'string', description: 'Table name or ID', required: true },
-          { id: generateId(), name: 'record_id', type: 'string', description: 'Record ID (rec...)', required: true },
-          { id: generateId(), name: 'fields_json', type: 'string', description: 'JSON object of field updates', required: true },
+          { id: generateId(), name: 'record_id', type: 'string', description: 'Record ID (recXXXXXX)', required: true },
+          { id: generateId(), name: 'field_name', type: 'string', description: 'Field name to update', required: true },
+          { id: generateId(), name: 'field_value', type: 'string', description: 'New value for that field', required: true },
         ],
         connector: {
           method: 'PATCH',
           url: 'https://api.airtable.com/v0/{base_id}/{table_name}/{record_id}',
           authType: 'bearer',
-          bodyTemplate: '{"fields":{fields_json}}',
+          bodyTemplate: '{"fields":{"{field_name}":"{field_value}"}}',
         },
       },
       {
@@ -666,6 +669,8 @@ export const TOOL_PACKS: ToolPack[] = [
   },
 
   // ── WooCommerce ────────────────────────────────────────────────────────────
+  // Auth: HTTP Basic using consumer_key (user) + consumer_secret (pass)
+  // Credentials are sent in the Authorization header, never in the URL.
   {
     id: 'woocommerce',
     name: 'WooCommerce',
@@ -685,8 +690,8 @@ export const TOOL_PACKS: ToolPack[] = [
         ],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3/orders?per_page={per_page}&status={status}&consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3/orders?per_page={per_page}&status={status}',
+          authType: 'basic',
         },
       },
       {
@@ -697,8 +702,8 @@ export const TOOL_PACKS: ToolPack[] = [
         ],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3/orders/{order_id}?consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3/orders/{order_id}',
+          authType: 'basic',
         },
       },
       {
@@ -709,8 +714,8 @@ export const TOOL_PACKS: ToolPack[] = [
         ],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3/products?per_page={per_page}&consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3/products?per_page={per_page}',
+          authType: 'basic',
         },
       },
       {
@@ -721,8 +726,8 @@ export const TOOL_PACKS: ToolPack[] = [
         ],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3/products/{product_id}?consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3/products/{product_id}',
+          authType: 'basic',
         },
       },
       {
@@ -733,8 +738,8 @@ export const TOOL_PACKS: ToolPack[] = [
         ],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3/customers?per_page={per_page}&consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3/customers?per_page={per_page}',
+          authType: 'basic',
         },
       },
       {
@@ -745,8 +750,8 @@ export const TOOL_PACKS: ToolPack[] = [
         ],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3/customers/{customer_id}?consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3/customers/{customer_id}',
+          authType: 'basic',
         },
       },
       {
@@ -757,8 +762,8 @@ export const TOOL_PACKS: ToolPack[] = [
         ],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3/coupons?per_page={per_page}&consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3/coupons?per_page={per_page}',
+          authType: 'basic',
         },
       },
       {
@@ -767,8 +772,8 @@ export const TOOL_PACKS: ToolPack[] = [
         inputs: [],
         connector: {
           method: 'GET',
-          url: 'https://{shop_domain}/wp-json/wc/v3?consumer_key={consumer_key}&consumer_secret={consumer_secret}',
-          authType: 'none',
+          url: 'https://{shop_domain}/wp-json/wc/v3',
+          authType: 'basic',
         },
       },
     ],

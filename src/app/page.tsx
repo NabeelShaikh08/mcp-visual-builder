@@ -1,5 +1,23 @@
+'use client'
+
 import Link from 'next/link'
-import { ArrowRight, Layers, Zap, Terminal, Globe } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { ArrowRight, Layers, Zap, Terminal, Globe, AlertCircle } from 'lucide-react'
+
+function AuthErrorBanner() {
+  const params = useSearchParams()
+  const error = params.get('error')
+  if (!error) return null
+  return (
+    <div className="bg-red-500/10 border-b border-red-500/20 px-8 py-2.5 flex items-center gap-2 text-red-400 text-xs">
+      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+      {error === 'auth_failed'
+        ? 'Sign-in failed. Please try again.'
+        : 'Something went wrong. Please try again.'}
+    </div>
+  )
+}
 
 export default function HomePage() {
   return (
@@ -37,6 +55,11 @@ export default function HomePage() {
           </Link>
         </div>
       </nav>
+
+      {/* Auth error banner — shown when OAuth redirects back with ?error= */}
+      <Suspense>
+        <AuthErrorBanner />
+      </Suspense>
 
       {/* Hero */}
       <section className="max-w-3xl mx-auto px-8 pt-28 pb-20">

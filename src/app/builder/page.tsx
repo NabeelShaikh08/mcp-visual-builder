@@ -15,7 +15,7 @@ import PackInstaller from '@/components/PackInstaller'
 import LiveToolTest from '@/components/LiveToolTest'
 import {
   Zap, Layers, FlaskConical, Download, ChevronRight,
-  LayoutGrid, Beaker, X, Undo2, Redo2, Upload, Cloud, Loader2, LogOut,
+  LayoutGrid, Beaker, X, Undo2, Redo2, Upload, Cloud, Loader2, LogOut, Copy,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -61,6 +61,9 @@ export default function BuilderPage() {
   const [storageWarning, setStorageWarning] = useState(false)
   const [undoStack, setUndoStack] = useState<McpTool[][]>([])
   const [redoStack, setRedoStack] = useState<McpTool[][]>([])
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   // Sync cloud servers into local state when they arrive
@@ -125,16 +128,22 @@ export default function BuilderPage() {
       .catch(() => saveToStorage(CREDS_KEY, allCredentials, () => setStorageWarning(true)))
   }, [allCredentials, hydrated])
 
-  // Keyboard shortcuts for undo/redo
+  // Keyboard shortcuts for undo/redo and help
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.shiftKey && e.key === 'z') { e.preventDefault(); redo() }
       else if (mod && e.key === 'z') { e.preventDefault(); undo() }
+      else if (e.key === '?' && !mod && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault()
+        setShowShortcuts((v) => !v)
+      } else if (e.key === 'Escape') {
+        setShowShortcuts(false)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  })
+  }, [undoStack, redoStack])
 
   const server = servers.find((s) => s.id === activeServerId) ?? servers[0]
   const credentials = server ? (allCredentials[server.id] ?? {}) : {}
@@ -201,15 +210,33 @@ export default function BuilderPage() {
     updateServer({ tools: [...server.tools, tool] })
   }
 
+  function duplicateTool(tool: McpTool) {
+    if (!server) return
+    pushUndo(server.tools)
+    const copy: McpTool = { ...tool, id: generateId(), name: `${tool.name}_copy` }
+    updateServer({ tools: [...server.tools, copy] })
+  }
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3500)
+  }
+
   function installPack(tools: McpTool[], creds: Record<string, string>) {
     if (!server) return
     const existingNames = new Set(server.tools.map((t) => t.name))
     const newTools = tools.filter((t) => !existingNames.has(t.name))
+    const skipped = tools.length - newTools.length
     updateServer({ tools: [...server.tools, ...newTools] })
     setAllCredentials((prev) => ({
       ...prev,
       [server.id]: { ...(prev[server.id] ?? {}), ...creds },
     }))
+    if (skipped > 0) {
+      showToast(`${newTools.length} tool${newTools.length !== 1 ? 's' : ''} added. ${skipped} already existed and were skipped.`)
+    } else {
+      showToast(`${newTools.length} tool${newTools.length !== 1 ? 's' : ''} added successfully.`)
+    }
   }
 
   function newServer() {
@@ -223,8 +250,26 @@ export default function BuilderPage() {
     setEditingTool(null)
   }
 
+  function duplicateServer(id: string) {
+    const source = servers.find((s) => s.id === id)
+    if (!source) return
+    const copy: McpServer = {
+      ...source,
+      id: generateId(),
+      name: `${source.name}-copy`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    const updated = [...servers, copy]
+    setServers(updated)
+    updateServers(updated)
+    setActiveServerId(copy.id)
+  }
+
   function deleteServer(id: string) {
     if (servers.length === 1) return
+    const target = servers.find((s) => s.id === id)
+    if (!window.confirm(`Delete "${target?.name ?? 'this server'}"? This cannot be undone.`)) return
     const remaining = servers.filter((s) => s.id !== id)
     setServers(remaining)
     updateServers(remaining)
@@ -326,7 +371,9 @@ export default function BuilderPage() {
               ? <Loader2 className="w-3 h-3 text-white/30 animate-spin" />
               : syncError
                 ? <span title={syncError}><Cloud className="w-3 h-3 text-amber-400/60" /></span>
-                : <span title="Synced"><Cloud className="w-3 h-3 text-emerald-400/60" /></span>
+                : <span title={lastSynced ? `Synced ${lastSynced.toLocaleTimeString()}` : 'Synced'} onClick={() => setLastSynced(new Date())}>
+                    <Cloud className="w-3 h-3 text-emerald-400/60" />
+                  </span>
           )}
         </div>
 
@@ -346,6 +393,15 @@ export default function BuilderPage() {
               </button>
             ))}
           </div>
+
+          {/* Help */}
+          <button
+            onClick={() => setShowShortcuts(true)}
+            title="Keyboard shortcuts (?)"
+            className="text-[10px] font-mono text-white/25 hover:text-white/50 border border-[#2a2a2a] hover:border-[#444] w-6 h-6 rounded flex items-center justify-center transition-colors"
+          >
+            ?
+          </button>
 
           {/* Auth */}
           {!authLoading && (
@@ -369,6 +425,33 @@ export default function BuilderPage() {
         </div>
       </header>
 
+      {/* Keyboard shortcuts modal */}
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-[#111] border border-[#222] rounded-xl p-6 w-80 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcuts(false)} className="text-white/30 hover:text-white/60 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-2 text-xs">
+              {[
+                ['Ctrl + Z', 'Undo'],
+                ['Ctrl + Shift + Z', 'Redo'],
+                ['?', 'Toggle this help'],
+                ['Escape', 'Close modals'],
+              ].map(([key, desc]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <span className="text-white/40">{desc}</span>
+                  <kbd className="font-mono bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-0.5 rounded text-white/50 text-[10px]">{key}</kbd>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Storage warning */}
       {storageWarning && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-5 py-2 flex items-center justify-between text-amber-400 text-xs">
@@ -376,6 +459,13 @@ export default function BuilderPage() {
           <button onClick={() => setStorageWarning(false)} className="text-amber-400/60 hover:text-amber-400 transition-colors ml-4">
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-[#1a1a1a] border border-[#2a2a2a] text-white/70 text-xs px-4 py-2.5 rounded-lg shadow-xl pointer-events-none">
+          {toast}
         </div>
       )}
 
@@ -411,15 +501,24 @@ export default function BuilderPage() {
                     <span className="text-[8px] text-emerald-400/50 border border-emerald-400/20 px-1 rounded-full">auth</span>
                   )}
                 </div>
-                {servers.length > 1 && (
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-all">
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteServer(s.id) }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400 transition-all text-xs"
-                    title="Delete server"
+                    onClick={(e) => { e.stopPropagation(); duplicateServer(s.id) }}
+                    className="p-0.5 text-white/20 hover:text-white/60 transition-colors"
+                    title="Duplicate server"
                   >
-                    ×
+                    <Copy className="w-2.5 h-2.5" />
                   </button>
-                )}
+                  {servers.length > 1 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteServer(s.id) }}
+                      className="p-0.5 text-white/20 hover:text-red-400 transition-colors text-xs"
+                      title="Delete server"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </button>
             ))}
           </div>
@@ -507,6 +606,7 @@ export default function BuilderPage() {
                 tools={server.tools}
                 onEdit={(tool) => { setEditingTool(tool); setShowForm(true) }}
                 onDelete={deleteTool}
+                onDuplicate={duplicateTool}
               />
 
               {showForm && (

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core'
 
 export const mcpServers = pgTable('mcp_servers', {
   id: text('id').primaryKey(),
@@ -8,7 +8,9 @@ export const mcpServers = pgTable('mcp_servers', {
   tools: jsonb('tools').notNull().default([]),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
+}, (table) => [
+  index('mcp_servers_user_id_idx').on(table.userId),
+])
 
 export type DbMcpServer = typeof mcpServers.$inferSelect
 export type InsertMcpServer = typeof mcpServers.$inferInsert

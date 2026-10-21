@@ -1,13 +1,14 @@
 'use client'
 
 import type { McpTool } from '@/types'
-import { Pencil, Trash2, ChevronDown, ChevronUp, Globe } from 'lucide-react'
+import { Pencil, Trash2, ChevronDown, ChevronUp, Globe, Copy } from 'lucide-react'
 import { useState } from 'react'
 
 interface Props {
   tools: McpTool[]
   onEdit: (tool: McpTool) => void
   onDelete: (id: string) => void
+  onDuplicate: (tool: McpTool) => void
 }
 
 const METHOD_COLORS: Record<string, string> = {
@@ -18,7 +19,7 @@ const METHOD_COLORS: Record<string, string> = {
   DELETE: 'text-red-400',
 }
 
-export default function ToolList({ tools, onEdit, onDelete }: Props) {
+export default function ToolList({ tools, onEdit, onDelete, onDuplicate }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   if (tools.length === 0) {
@@ -51,6 +52,13 @@ export default function ToolList({ tools, onEdit, onDelete }: Props) {
                   {tool.inputs.length}p
                 </span>
               )}
+              <button
+                onClick={() => onDuplicate(tool)}
+                className="p-1.5 text-white/25 hover:text-white/70 hover:bg-white/[0.05] rounded transition-colors"
+                title="Duplicate"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
               <button
                 onClick={() => onEdit(tool)}
                 className="p-1.5 text-white/25 hover:text-white/70 hover:bg-white/[0.05] rounded transition-colors"

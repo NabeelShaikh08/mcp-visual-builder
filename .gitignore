@@ -30,3 +30,6 @@ npm-debug.log*
 # TypeScript build info (auto-generated)
 tsconfig.tsbuildinfo
 next-env.d.ts
+
+# Local MCP server config (may contain secrets/tokens)
+.mcp.json
