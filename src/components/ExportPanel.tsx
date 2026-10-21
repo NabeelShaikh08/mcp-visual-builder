@@ -13,11 +13,12 @@ import { Copy, Download, Check, AlertTriangle } from 'lucide-react'
 
 interface Props {
   server: McpServer
+  credentials?: Record<string, string>
 }
 
 type ExportTab = 'server' | 'config' | 'package' | 'install-mac' | 'install-win'
 
-export default function ExportPanel({ server }: Props) {
+export default function ExportPanel({ server, credentials = {} }: Props) {
   const [activeTab, setActiveTab] = useState<ExportTab>('server')
   const [copied, setCopied] = useState(false)
 
@@ -31,11 +32,11 @@ export default function ExportPanel({ server }: Props) {
       .replace(/^-|-$/g, '') || 'server'
 
   const files: Record<ExportTab, { label: string; filename: string; content: string }> = {
-    server: { label: 'server.js', filename: `${safeName}-server.js`, content: generateServerCode(server) },
-    config: { label: 'claude_desktop_config.json', filename: 'claude_desktop_config.json', content: generateClaudeConfig(server) },
+    server: { label: 'server.js', filename: `${safeName}-server.js`, content: generateServerCode(server, credentials) },
+    config: { label: 'claude_desktop_config.json', filename: 'claude_desktop_config.json', content: generateClaudeConfig(server, credentials) },
     package: { label: 'package.json', filename: 'package.json', content: generateServerPackageJson(server) },
-    'install-mac': { label: 'install.sh', filename: `${safeName}-install.sh`, content: generateInstallScriptUnix(server) },
-    'install-win': { label: 'install.ps1', filename: `${safeName}-install.ps1`, content: generateInstallScriptWindows(server) },
+    'install-mac': { label: 'install.sh', filename: `${safeName}-install.sh`, content: generateInstallScriptUnix(server, credentials) },
+    'install-win': { label: 'install.ps1', filename: `${safeName}-install.ps1`, content: generateInstallScriptWindows(server, credentials) },
   }
 
   function copy() {

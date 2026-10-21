@@ -554,7 +554,7 @@ export default function BuilderPage() {
           )}
 
           {activeTab === 'test' && <TestChat server={server} credentials={credentials} />}
-          {activeTab === 'export' && <ExportPanel server={server} />}
+          {activeTab === 'export' && <ExportPanel server={server} credentials={credentials} />}
         </main>
       </div>
     </div>

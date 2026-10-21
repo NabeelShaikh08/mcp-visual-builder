@@ -1,9 +1,41 @@
 import type { McpServer, McpTool, ToolInput } from '@/types'
 
-// Generate Zod schema string for a tool's inputs
-function genZodSchema(inputs: ToolInput[]): string {
-  if (inputs.length === 0) return 'z.object({})'
-  const fields = inputs.map((inp) => {
+// Derive a stable env var name for a tool's auth token
+function tokenEnvVar(tool: McpTool): string {
+  const { authType, authHeader } = tool.connector
+  if (authType === 'api-key' && authHeader) {
+    // e.g. X-Shopify-Access-Token → SHOPIFY_ACCESS_TOKEN
+    return authHeader
+      .replace(/^X-/i, '')
+      .replace(/-/g, '_')
+      .toUpperCase()
+  }
+  // For bearer: derive from tool name prefix, e.g. stripe_list_orders → STRIPE_TOKEN
+  const prefix = tool.name.split('_')[0].toUpperCase()
+  return `${prefix}_TOKEN`
+}
+
+// Collect all unique env vars needed by a server
+export function collectEnvVars(server: McpServer): Record<string, string> {
+  const vars: Record<string, string> = {}
+  for (const tool of server.tools) {
+    const { authType } = tool.connector
+    if (authType === 'bearer' || authType === 'api-key') {
+      const key = tokenEnvVar(tool)
+      if (!vars[key]) vars[key] = ''
+    } else if (authType === 'basic') {
+      vars['API_USER'] = ''
+      vars['API_PASS'] = ''
+    }
+  }
+  return vars
+}
+
+// Generate Zod schema string for a tool's inputs — excluding credential placeholders
+function genZodSchema(inputs: ToolInput[], credentialKeys: Set<string>): string {
+  const filtered = inputs.filter((inp) => !credentialKeys.has(inp.name))
+  if (filtered.length === 0) return 'z.object({})'
+  const fields = filtered.map((inp) => {
     let zodType = ''
     if (inp.type === 'string') zodType = 'z.string()'
     else if (inp.type === 'number') zodType = 'z.number()'
@@ -20,26 +52,35 @@ function genZodSchema(inputs: ToolInput[]): string {
   return `z.object({\n${fields.join(',\n')}\n  })`
 }
 
-// Generate the fetch call for a tool based on its connector
-function genFetchCall(tool: McpTool): string {
+// Generate the fetch call for a tool, substituting known credential values into the URL
+function genFetchCall(tool: McpTool, credentials: Record<string, string>): string {
   const { connector } = tool
   const lines: string[] = []
+  const envVar = tokenEnvVar(tool)
 
-  // Build URL — replace {input.name} placeholders
-  const urlExpr = `\`${connector.url.replace(/\{([^}]+)\}/g, '${args.$1}')}\``
+  // Substitute credential placeholders in URL at code-gen time (e.g. {shop_domain})
+  // These are config values, not secrets — bake them in
+  let resolvedUrlTemplate = connector.url
+  for (const [k, v] of Object.entries(credentials)) {
+    if (v && k !== 'token' && k !== 'consumer_secret') {
+      resolvedUrlTemplate = resolvedUrlTemplate.replace(new RegExp(`\\{${k}\\}`, 'g'), v)
+    }
+  }
+
+  // Remaining {placeholders} are runtime args → convert to template literal expressions
+  const urlExpr = `\`${resolvedUrlTemplate.replace(/\{([^}]+)\}/g, '${args.$1}')}\``
 
   // Build headers
   const headers: string[] = ['"Content-Type": "application/json"']
   if (connector.authType === 'bearer') {
-    headers.push('"Authorization": `Bearer ${process.env.API_TOKEN}`')
+    headers.push(`"Authorization": \`Bearer \${process.env.${envVar}}\``)
   } else if (connector.authType === 'api-key' && connector.authHeader) {
-    headers.push(`"${connector.authHeader}": \`\${process.env.API_KEY}\``)
+    headers.push(`"${connector.authHeader}": \`\${process.env.${envVar}}\``)
   } else if (connector.authType === 'basic') {
-    headers.push('"Authorization": `Basic ${Buffer.from(\`\${process.env.API_USER}:\${process.env.API_PASS}\`).toString("base64")}`')
+    headers.push('"Authorization": `Basic ${Buffer.from(`${process.env.API_USER}:${process.env.API_PASS}`).toString("base64")}`')
   }
 
   lines.push(`    const url = ${urlExpr}`)
-  lines.push('    // Validate URL before fetching')
   lines.push('    try { new URL(url) } catch { throw new Error(`Invalid URL: ${url}`) }')
   lines.push('')
   lines.push('    const controller = new AbortController()')
@@ -74,16 +115,18 @@ function genFetchCall(tool: McpTool): string {
 }
 
 // Generate the full MCP server file content
-export function generateServerCode(server: McpServer): string {
+export function generateServerCode(server: McpServer, credentials: Record<string, string> = {}): string {
+  // Keys that are credential config values, not tool inputs
+  const credentialKeys = new Set(Object.keys(credentials))
+
   const toolBlocks = server.tools.map((tool) => {
-    return `  // Tool: ${tool.name}
-  server.tool(
+    return `  server.tool(
     "${tool.name}",
     "${tool.description.replace(/"/g, '\\"')}",
-    ${genZodSchema(tool.inputs)},
+    ${genZodSchema(tool.inputs, credentialKeys)},
     async (args) => {
       try {
-${genFetchCall(tool)}
+${genFetchCall(tool, credentials)}
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         return { content: [{ type: "text", text: \`Error: \${msg}\` }], isError: true }
@@ -92,132 +135,65 @@ ${genFetchCall(tool)}
   )`
   }).join('\n\n')
 
+  // Collect env vars and build comment block
+  const envVars = collectEnvVars(server)
+  const envComment = Object.keys(envVars).length > 0
+    ? `// Required environment variables:\n// ${Object.keys(envVars).map((k) => `${k}=...`).join('\n// ')}\n\n`
+    : ''
+
   return `/**
  * MCP Server: ${server.name}
  * ${server.description}
- * Generated by MCP Visual Builder — https://mcpbuilder.dev
- * Generated at: ${new Date().toISOString()}
+ * Generated by MCP Visual Builder
+ * ${new Date().toISOString()}
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
 
-const server = new McpServer({
+${envComment}const server = new McpServer({
   name: "${server.name}",
   version: "1.0.0",
 })
 
 ${toolBlocks}
 
-// Start the server using stdio transport (works with Claude Desktop)
 const transport = new StdioServerTransport()
 await server.connect(transport)
-console.error("${server.name} MCP server running on stdio")
+console.error("${server.name} MCP server running")
 `
 }
 
-// Generate the claude_desktop_config.json snippet
-export function generateClaudeConfig(server: McpServer): string {
+// Generate claude_desktop_config.json with env vars pre-filled where possible
+export function generateClaudeConfig(server: McpServer, credentials: Record<string, string> = {}): string {
   const key = server.name.toLowerCase().replace(/\s+/g, '-')
+
+  // Build env block: put actual credential values that are secrets (token, consumer_secret)
+  const envVars = collectEnvVars(server)
+  const env: Record<string, string> = {}
+  for (const varName of Object.keys(envVars)) {
+    // Map env var name back to credential key
+    if (varName.endsWith('_TOKEN') || varName.endsWith('_KEY') || varName.endsWith('_SECRET')) {
+      env[varName] = credentials.token ?? credentials.consumer_secret ?? ''
+    } else if (varName === 'API_USER') {
+      env[varName] = credentials.api_user ?? ''
+    } else if (varName === 'API_PASS') {
+      env[varName] = credentials.api_pass ?? ''
+    } else {
+      env[varName] = ''
+    }
+  }
+
   return JSON.stringify({
     mcpServers: {
       [key]: {
         command: 'node',
-        args: ['server.js'],
-        env: {},
+        args: [`${key}/server.js`],
+        env,
       },
     },
   }, null, 2)
-}
-
-// Generate a one-click bash install script for Mac/Linux
-export function generateInstallScriptUnix(server: McpServer): string {
-  const key = server.name.toLowerCase().replace(/\s+/g, '-')
-  const configPath = `~/Library/Application\\ Support/Claude/claude_desktop_config.json`
-  return `#!/usr/bin/env bash
-# One-click installer for MCP server: ${server.name}
-# Generated by MCP Visual Builder
-
-set -e
-
-INSTALL_DIR="$HOME/.mcp-servers/${key}"
-mkdir -p "$INSTALL_DIR"
-
-echo "→ Installing ${server.name} MCP server..."
-
-# Write server.js
-cat > "$INSTALL_DIR/server.js" << 'SERVEREOF'
-${generateServerCode(server)}
-SERVEREOF
-
-# Write package.json
-cat > "$INSTALL_DIR/package.json" << 'PKGEOF'
-${generateServerPackageJson(server)}
-PKGEOF
-
-# Install dependencies
-cd "$INSTALL_DIR"
-npm install --silent
-
-echo "→ Configuring Claude Desktop..."
-
-CONFIG_DIR="$HOME/Library/Application Support/Claude"
-CONFIG_FILE="$CONFIG_DIR/claude_desktop_config.json"
-mkdir -p "$CONFIG_DIR"
-
-# Merge into existing config or create new
-if [ -f "$CONFIG_FILE" ]; then
-  echo "  Config exists — add this to mcpServers in $CONFIG_FILE:"
-  echo '  "${key}": { "command": "node", "args": ["'"$INSTALL_DIR"'/server.js"] }'
-else
-  echo '{ "mcpServers": { "${key}": { "command": "node", "args": ["'"$INSTALL_DIR"'/server.js"] } } }' > "$CONFIG_FILE"
-  echo "  Claude Desktop config written to $CONFIG_FILE"
-fi
-
-echo ""
-echo "✓ Done! Restart Claude Desktop to activate ${server.name}."
-`
-}
-
-// Generate a one-click PowerShell install script for Windows
-export function generateInstallScriptWindows(server: McpServer): string {
-  const key = server.name.toLowerCase().replace(/\s+/g, '-')
-  return `# One-click installer for MCP server: ${server.name}
-# Generated by MCP Visual Builder
-# Run in PowerShell: .\\install.ps1
-
-$installDir = "$env:USERPROFILE\\.mcp-servers\\${key}"
-New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-
-Write-Host "-> Installing ${server.name} MCP server..."
-
-# server.js and package.json are expected in the same folder as this script
-Copy-Item ".\\server.js" "$installDir\\server.js" -Force
-Copy-Item ".\\package.json" "$installDir\\package.json" -Force
-
-Set-Location $installDir
-npm install --silent
-
-Write-Host "-> Configuring Claude Desktop..."
-
-$configDir = "$env:APPDATA\\Claude"
-$configFile = "$configDir\\claude_desktop_config.json"
-New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-
-$entry = @{ command = "node"; args = @("$installDir\\server.js") }
-if (Test-Path $configFile) {
-  Write-Host "  Config exists. Add this to mcpServers in $configFile :"
-  Write-Host '  "${key}": { "command": "node", "args": ["' + $installDir + '\\server.js"] }'
-} else {
-  $config = @{ mcpServers = @{ "${key}" = $entry } }
-  $config | ConvertTo-Json -Depth 5 | Set-Content $configFile
-  Write-Host "  Claude Desktop config written to $configFile"
-}
-
-Write-Host ""
-Write-Host "Done! Restart Claude Desktop to activate ${server.name}."
-`
 }
 
 // Generate a minimal package.json for the exported server
@@ -233,4 +209,75 @@ export function generateServerPackageJson(server: McpServer): string {
       zod: '^3.25.0',
     },
   }, null, 2)
+}
+
+// Generate a bash install script (Mac/Linux)
+export function generateInstallScriptUnix(server: McpServer, credentials: Record<string, string> = {}): string {
+  const key = server.name.toLowerCase().replace(/\s+/g, '-')
+  const envVars = collectEnvVars(server)
+  const envExports = Object.keys(envVars).map((k) => `export ${k}="your_value_here"`).join('\n')
+
+  return `#!/usr/bin/env bash
+# Installer for MCP server: ${server.name}
+# Generated by MCP Visual Builder
+set -e
+
+INSTALL_DIR="$HOME/.mcp-servers/${key}"
+mkdir -p "$INSTALL_DIR"
+
+echo "Installing ${server.name} MCP server..."
+
+cat > "$INSTALL_DIR/server.js" << 'SERVEREOF'
+${generateServerCode(server, credentials)}
+SERVEREOF
+
+cat > "$INSTALL_DIR/package.json" << 'PKGEOF'
+${generateServerPackageJson(server)}
+PKGEOF
+
+cd "$INSTALL_DIR"
+npm install --silent
+
+echo ""
+echo "Add this to ~/Library/Application Support/Claude/claude_desktop_config.json:"
+echo ""
+cat << 'CONFIGEOF'
+${generateClaudeConfig(server, credentials)}
+CONFIGEOF
+
+echo ""
+echo "Done! Set your env vars, then restart Claude Desktop."
+${envExports ? `\n# Set these env vars in your shell or in the Claude config env block:\n${envExports}` : ''}
+`
+}
+
+// Generate a PowerShell install script (Windows)
+export function generateInstallScriptWindows(server: McpServer, credentials: Record<string, string> = {}): string {
+  const key = server.name.toLowerCase().replace(/\s+/g, '-')
+  return `# Installer for MCP server: ${server.name}
+# Generated by MCP Visual Builder
+# Run: .\\install.ps1
+
+$installDir = "$env:USERPROFILE\\.mcp-servers\\${key}"
+New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+
+Write-Host "Installing ${server.name} MCP server..."
+
+Copy-Item ".\\server.js" "$installDir\\server.js" -Force
+Copy-Item ".\\package.json" "$installDir\\package.json" -Force
+
+Set-Location $installDir
+npm install --silent
+
+$configDir = "$env:APPDATA\\Claude"
+$configFile = "$configDir\\claude_desktop_config.json"
+New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+
+Write-Host ""
+Write-Host "Add this to $configFile :"
+Write-Host '${generateClaudeConfig(server, credentials).replace(/'/g, "''")}'
+
+Write-Host ""
+Write-Host "Done! Set your env vars in the config, then restart Claude Desktop."
+`
 }
