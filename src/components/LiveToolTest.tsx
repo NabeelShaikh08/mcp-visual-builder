@@ -34,6 +34,10 @@ export default function LiveToolTest({ tool, credentials = {} }: Props) {
         body: JSON.stringify({ tool, args, credentials }),
       })
       const data = await res.json()
+      if (res.status === 401) {
+        setResult({ success: false, status: 401, durationMs: 0, error: 'You must be signed in to run live tests. Click "Sign in" in the top-right corner.' })
+        return
+      }
       setResult(data)
     } catch (err) {
       setResult({ success: false, status: 0, durationMs: 0, error: err instanceof Error ? err.message : String(err) })

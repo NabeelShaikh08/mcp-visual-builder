@@ -58,6 +58,9 @@ export default function TestChat({ server, credentials = {} }: Props) {
         }),
       })
 
+      if (res.status === 401) {
+        throw new Error('You must be signed in to use AI Chat. Click "Sign in" in the top-right corner.')
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Unknown error' }))
         throw new Error(err.error ?? `HTTP ${res.status}`)

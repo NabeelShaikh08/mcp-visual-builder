@@ -21,7 +21,11 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // IMPORTANT: calling getUser() (not getSession()) validates the token with
+  // Supabase's server and automatically refreshes it when expired, writing the
+  // new token back via setAll above. This is required for SSR auth to stay alive.
   await supabase.auth.getUser()
+
   return supabaseResponse
 }
 
