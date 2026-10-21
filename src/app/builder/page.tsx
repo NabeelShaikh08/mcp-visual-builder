@@ -483,10 +483,13 @@ export default function BuilderPage() {
           </div>
           <div className="flex-1 overflow-y-auto py-1">
             {servers.map((s) => (
-              <button
+              <div
                 key={s.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => { setActiveServerId(s.id); setShowForm(false); setEditingTool(null) }}
-                className={`w-full text-left px-3 py-2.5 transition-colors group relative ${
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setActiveServerId(s.id); setShowForm(false); setEditingTool(null) } }}
+                className={`w-full text-left px-3 py-2.5 transition-colors group relative cursor-pointer ${
                   s.id === activeServerId
                     ? 'bg-white/[0.05] text-white border-r border-white/20'
                     : 'text-white/40 hover:text-white/70 hover:bg-white/[0.02]'
@@ -519,7 +522,7 @@ export default function BuilderPage() {
                     </button>
                   )}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
 
